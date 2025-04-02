@@ -1,6 +1,8 @@
 "use client";
+
+// import cv from "opencv4nodejs";
 import { useEffect, useRef, useState } from "react";
-import { startCamera } from "@/core/sensors/camera";
+import { startCamera } from "@/framework/sensors/camera";
 import { getTaskConstraints, Tasks } from "@/app/lib/tasks";
 
 //const taskList = [{ id: "task1", title: "task1" }, { id: "task2", title: "task2" }];
@@ -36,11 +38,121 @@ export default function Home() {
     }
 
     const mediaStream = await startCamera(width, height, fps);
+    const videoTrack = mediaStream.getVideoTracks()[0];
+    const processedTrack = await processVideoTrack(videoTrack);
+    const processedStream = new MediaStream([processedTrack]);
 
     if (VideoRef.current) {
       console.log("Refreshing Camera");
-      VideoRef.current.srcObject = mediaStream;
+      VideoRef.current.srcObject = processedStream;
     }
+  };
+
+  const processVideoTrack = (videoTrack: MediaStreamTrack) => {
+    return new Promise<MediaStreamTrack>((resolve) => {
+      const videoElement = document.createElement("video");
+      videoElement.srcObject = new MediaStream([videoTrack]);
+      videoElement.play();
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+      videoElement.addEventListener("loadedmetadata", () => {
+        canvas.width = videoElement.videoWidth / 2; // Resize to half the width
+        canvas.height = videoElement.videoHeight / 2; // Resize to half the height
+
+        // Create a new MediaStreamTrack from the canvas
+        const processedStream = canvas.captureStream();
+        const processedTrack = processedStream.getVideoTracks()[0];
+
+        // Use the processed track (e.g., display it or send it over WebRTC)
+        resolve(processedTrack);
+        processFrame();
+      });
+
+      function applyKernel(imageData: ImageData) {
+        const data = imageData.data;
+        const width = imageData.width;
+        const height = imageData.height;
+
+        // Example: Apply a simple edge detection kernel
+        // const kernel = [-1, -1, -1, -1, 8, -1, -1, -1, -1];
+        const kernel = [
+          1 / 16,
+          2 / 16,
+          1 / 16,
+          2 / 16,
+          4 / 16,
+          2 / 16,
+          1 / 16,
+          2 / 16,
+          1 / 16,
+        ];
+
+        const tempData = new Uint8ClampedArray(data.length);
+
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            let r = 0,
+              g = 0,
+              b = 0;
+
+            for (let ky = -1; ky <= 1; ky++) {
+              for (let kx = -1; kx <= 1; kx++) {
+                const pixelIndex = ((y + ky) * width + (x + kx)) * 4;
+                const kernelIndex = (ky + 1) * 3 + (kx + 1);
+
+                r += data[pixelIndex] * kernel[kernelIndex];
+                g += data[pixelIndex + 1] * kernel[kernelIndex];
+                b += data[pixelIndex + 2] * kernel[kernelIndex];
+              }
+            }
+
+            const outputIndex = (y * width + x) * 4;
+            tempData[outputIndex] = r;
+            tempData[outputIndex + 1] = g;
+            tempData[outputIndex + 2] = b;
+            tempData[outputIndex + 3] = data[outputIndex + 3]; // Preserve alpha
+          }
+        }
+
+        return new ImageData(tempData, width, height);
+      }
+
+      // function applyKernelCV(mat: cv.Mat) {
+      //   // Example: Apply a Gaussian blur
+      //   const blurredMat = mat.gaussianBlur(new cv.Size(5, 5), 0);
+      //
+      //   // Example: Apply a Sobel edge detection kernel
+      //   const sobelX = blurredMat.sobel(cv.CV_8U, 1, 0);
+      //   const sobelY = blurredMat.sobel(cv.CV_8U, 0, 1);
+      //   const sobelMat = sobelX.add(sobelY);
+      //
+      //   return sobelMat;
+      // }
+
+      function processFrame() {
+        ctx!.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height);
+
+        // const mat = cv.matFromImageData(imageData);
+
+        // const processedMat = applyKernelCV(mat);
+
+        // Convert processed Mat back to ImageData
+        // const processedImageData = new ImageData(
+        //   new Uint8ClampedArray(processedMat.getData()),
+        //   processedMat.cols,
+        //   processedMat.rows,
+        // Draw the processed frame back to the canvas
+        // ctx!.putImageData(processedImageData, 0, 0);
+
+        const processedImageData = applyKernel(imageData);
+        ctx!.putImageData(processedImageData, 0, 0);
+
+        requestAnimationFrame(processFrame); // Continuously process frames
+      }
+    });
   };
 
   const onStart = async () => {
@@ -154,7 +266,6 @@ export default function Home() {
           </select>
         </div>
       </div>
-
       <button
         className="border border-gray-900 rounded-md p-2 bg-gray-100"
         onClick={async () => {
