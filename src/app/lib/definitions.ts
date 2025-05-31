@@ -17,5 +17,3 @@ export interface VideoResolution {
   aspectRatio: string;
   label?: string;
 }
-
-export type VideoFps = number;

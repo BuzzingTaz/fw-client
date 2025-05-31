@@ -31,7 +31,7 @@ export default function Home() {
     2 / 16,
     1 / 16,
   ]);
-  const { sendFrame } = useOffloadScheduler(socket, isConnected, 10);
+  const { enqueueFrame } = useOffloadScheduler(socket, isConnected, 10);
 
   const [selectedResolution, setSelectedResolution] =
     useState<VideoResolution | null>(null);
@@ -143,15 +143,11 @@ export default function Home() {
           if (done) break;
 
           // Send raw frame directly without processing
-          if (isConnected) {
-            sendFrame({
-              frame: value,
-              timestamp: Date.now(),
-              resolution: selectedResolution!,
-            });
-          } else {
-            value.close();
-          }
+          await enqueueFrame({
+            frame: value,
+            timestamp: Date.now(),
+            resolution: selectedResolution!,
+          });
         } catch (error) {
           console.error("Offloading error:", error);
         }
@@ -163,7 +159,7 @@ export default function Home() {
     return () => {
       reader.cancel();
     };
-  }, [offloadTrack, sendFrame, isConnected]);
+  }, [offloadTrack, enqueueFrame, isConnected]);
 
   const handleStart = async (resolution: VideoResolution, fps: number) => {
     appRunning.current = true;

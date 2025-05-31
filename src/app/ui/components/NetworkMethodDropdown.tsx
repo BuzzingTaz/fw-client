@@ -1,7 +1,7 @@
 import { Task } from "@/app/lib/definitions";
 import { useQuery } from "@tanstack/react-query";
 
-interface NetworkMethodsDropdownProps {
+interface NetworkMethodDropdownProps {
   taskID: string;
   selectedNetworkMethod: string | null;
   onChange: (networkMethod: string) => void;
@@ -11,7 +11,7 @@ export default function NetworkMethodDropdown({
   taskID,
   selectedNetworkMethod,
   onChange,
-}: NetworkMethodsDropdownProps) {
+}: NetworkMethodDropdownProps) {
   const {
     data: tasks,
     isLoading,
