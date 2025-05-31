@@ -66,10 +66,10 @@ export default function CanvasDisplay({
     ctx.fillStyle = "#FF0000";
 
     boundingBoxes.forEach((box) => {
-      const scaledX = box.x * scale;
-      const scaledY = box.y * scale;
-      const scaledWidth = box.width * scale;
-      const scaledHeight = box.height * scale;
+      const scaledX = box.x * scaleX;
+      const scaledY = box.y * scaleY;
+      const scaledWidth = box.width * scaleX;
+      const scaledHeight = box.height * scaleY;
 
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
       ctx.fillText(

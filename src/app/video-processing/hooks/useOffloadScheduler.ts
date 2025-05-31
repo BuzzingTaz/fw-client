@@ -13,16 +13,16 @@ export function useOffloadScheduler(
   const frameQueue = useRef<VideoFrameData[]>([]);
   const isSendingRef = useRef(false);
 
-  const sendFrame = useCallback((data: VideoFrameData) => {
+  const enqueueFrame = useCallback(async (data: VideoFrameData) => {
     if (frameQueue.current.length >= MAX_QUEUE_SIZE) {
       const oldFrame = frameQueue.current.shift();
       oldFrame?.frame.close();
     }
     frameQueue.current.push(data);
-    processQueue();
+    await processQueue();
   }, []);
 
-  const processQueue = useCallback(() => {
+  const processQueue = useCallback(async () => {
     if (isSendingRef.current || frameQueue.current.length === 0) return;
     if (!socket || !isConnected) return;
     isSendingRef.current = true;
@@ -47,22 +47,25 @@ export function useOffloadScheduler(
     ctx.drawImage(frame, 0, 0);
     frame.close();
 
-    canvas
-      .convertToBlob({ type: "image/jpeg", quality: 0.8 })
-      .then((blob) => {
-        socket.emit("video-processing", {
-          clientID: "client-1",
-          image: blob,
-          timestamp,
-          resolution,
-        });
-        isSendingRef.current = false;
-        processQueue(); // Process next frame in the queue
-      })
-      .catch((error) => {
-        console.error("Failed to convert frame to blob:", error);
-        isSendingRef.current = false;
+    try {
+      const blob = await canvas.convertToBlob({
+        type: "image/jpeg",
+        quality: 0.8,
       });
+      const arrayBuffer = await blob.arrayBuffer();
+
+      socket.emit("video-processing", {
+        clientID: "client-1",
+        image: arrayBuffer,
+        timestamp,
+        resolution,
+      });
+    } catch (error) {
+      console.error("Failed to convert frame to blob:", error);
+    } finally {
+      isSendingRef.current = false;
+      await processQueue(); // Process next frame in the queue
+    }
   }, [socket, isConnected]);
 
   useEffect(() => {
@@ -80,5 +83,5 @@ export function useOffloadScheduler(
     }
   }, [isConnected]);
 
-  return { sendFrame };
+  return { enqueueFrame };
 }
