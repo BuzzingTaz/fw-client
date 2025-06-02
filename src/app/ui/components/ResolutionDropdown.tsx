@@ -15,7 +15,7 @@ const ResolutionDropdown: React.FC<ResolutionDropdownProps> = ({
   onChange,
 }) => {
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = resolutionList.find(
+    const selected = resolutionList?.find(
       (res) => `${res.width}x${res.height}` === e.target.value,
     );
     if (selected) {

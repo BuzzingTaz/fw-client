@@ -38,7 +38,7 @@ export default function Sidebar() {
           Tasks
         </h3>
         <div className="space-y-1">
-          {tasks.map((task) => (
+          {tasks?.map((task) => (
             <Link
               key={task.taskID}
               href={`/${task.taskID}`}
