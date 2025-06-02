@@ -8,7 +8,7 @@ export function useSocket() {
 
   useEffect(() => {
     if (!socketRef.current && typeof window !== "undefined") {
-      socketRef.current = io("http://localhost:3001");
+      socketRef.current = io("http://10.1.34.186:3001");
     }
 
     const socket = socketRef.current;

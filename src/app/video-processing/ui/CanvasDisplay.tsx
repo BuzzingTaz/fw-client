@@ -56,9 +56,6 @@ export default function CanvasDisplay({
 
     const scaleX = canvas.width / videoWidth;
     const scaleY = canvas.height / videoHeight;
-    const scale = Math.min(scaleX, scaleY);
-    const offsetX = (containerSize.width - videoWidth * scale) / 2;
-    const offsetY = (containerSize.height - videoHeight * scale) / 2;
 
     ctx.strokeStyle = "#FF0000";
     ctx.lineWidth = 2;
@@ -66,16 +63,16 @@ export default function CanvasDisplay({
     ctx.fillStyle = "#FF0000";
 
     boundingBoxes.forEach((box) => {
-      const scaledX = box.x * scaleX;
-      const scaledY = box.y * scaleY;
-      const scaledWidth = box.width * scaleX;
-      const scaledHeight = box.height * scaleY;
+      const scaledX = box.x1 * scaleX;
+      const scaledY = box.y1 * scaleY;
+      const scaledWidth = (box.x2 - box.x1) * scaleX;
+      const scaledHeight = (box.y2 - box.y1) * scaleY;
 
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
       ctx.fillText(
         `${box.label} (${Math.round(box.confidence * 100)}%)`,
-        box.x,
-        box.y - 5,
+        box.x1,
+        box.y1 - 5,
       );
     });
   }, [boundingBoxes, videoWidth, videoHeight, containerSize]);
