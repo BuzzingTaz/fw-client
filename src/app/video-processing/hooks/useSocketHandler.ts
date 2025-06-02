@@ -6,7 +6,7 @@ import { BoundingBox } from "@/app/video-processing/types/video-types";
 // TODO: Rename hook
 export function useSocketHandler(socket: Socket | null) {
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([
-    { x: 20, y: 20, width: 20, height: 20, confidence: 0.5, label: "test" },
+    { x1: 20, y1: 20, x2: 90, y2: 90, confidence: 0.5, label: "test" },
   ]);
 
   useEffect(() => {
