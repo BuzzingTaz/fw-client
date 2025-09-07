@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "@/app/ui/globals.css";
 import { geistSans, geistMono } from "@/app/ui/fonts";
 import Sidebar from "@/app/ui/components/Sidebar";
-import ReactQueryProvider from "@/app/lib/utils/ReactQueryProvider";
+import ReactQueryProvider from "@framework/utils/ReactQueryProvider";
 
 export const metadata: Metadata = {
   title: "Client Edge Tasks",
