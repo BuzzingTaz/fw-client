@@ -12,7 +12,7 @@ interface CameraControlsProps {
   onResolutionChange: (resolution: VideoResolution | null) => void;
   onFpsChange: (fps: number | null) => void;
   onNetworkMethodChange: (method: string | null) => void;
-  onStart: (resolution: VideoResolution, fps: number) => void;
+  onStart: () => void;
 }
 
 const taskID = "video-processing";
@@ -28,7 +28,7 @@ export default function CameraControls({
 }: CameraControlsProps) {
   const handleStartClick = () => {
     if (selectedResolution && selectedFps) {
-      onStart(selectedResolution, selectedFps);
+      onStart();
     }
   };
 

@@ -7,7 +7,7 @@ export function useLocalFrameProcessor(kernel: number[]) {
 
   useEffect(() => {
     workerRef.current = new Worker(
-      new URL("@/app/lib/workers/frame-processor.worker.ts", import.meta.url),
+      new URL("@framework/workers/frame-processor.worker.ts", import.meta.url),
     );
     return () => workerRef.current?.terminate();
   }, []);

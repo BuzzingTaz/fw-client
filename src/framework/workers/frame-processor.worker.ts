@@ -1,4 +1,4 @@
-import { applyKernel } from "@/app/lib/image-processing";
+import { applyKernel } from "@framework/image-processing";
 
 declare const self: Worker;
 
