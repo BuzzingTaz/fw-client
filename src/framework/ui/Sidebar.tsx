@@ -1,7 +1,7 @@
 "use client";
 // TODO: Make this a server component
 import Link from "next/link";
-import { Task } from "@/app/lib/definitions";
+import { Task } from "@framework/definitions";
 import { useQuery } from "@tanstack/react-query";
 
 export default function Sidebar() {
