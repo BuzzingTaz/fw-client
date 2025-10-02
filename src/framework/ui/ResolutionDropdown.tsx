@@ -1,12 +1,12 @@
 import React from "react";
 
-import { Task, VideoResolution } from "@/app/lib/definitions";
+import { Task, VideoResolution } from "@framework/definitions";
 import { useQuery } from "@tanstack/react-query";
 
 interface ResolutionDropdownProps {
   taskID: string;
   selectedResolution: VideoResolution | null;
-  onChange: (resolution: VideoResolution) => void;
+  onChange: React.ChangeEventHandler<HTMLSelectElement>;
 }
 
 const ResolutionDropdown: React.FC<ResolutionDropdownProps> = ({
@@ -14,14 +14,6 @@ const ResolutionDropdown: React.FC<ResolutionDropdownProps> = ({
   selectedResolution,
   onChange,
 }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = resolutionList?.find(
-      (res) => `${res.width}x${res.height}` === e.target.value,
-    );
-    if (selected) {
-      onChange(selected);
-    }
-  };
 
   const {
     data: tasks,
@@ -44,18 +36,15 @@ const ResolutionDropdown: React.FC<ResolutionDropdownProps> = ({
 
   return (
     <select
-      value={
-        selectedResolution
-          ? `${selectedResolution.width}x${selectedResolution.height}`
-          : ""
-      }
-      onChange={handleChange}
       className="border border-gray-900 rounded-md p-2 bg-gray-100"
+      name="resolution"
+      value={selectedResolution?.id || ""}
+      onChange={onChange}
     >
-      {resolutionList!.map((res) => (
+      {resolutionList!.map((res: VideoResolution) => (
         <option
-          key={`${res.width}x${res.height}`}
-          value={`${res.width}x${res.height}`}
+          key={res.id}
+          value={res.id}
         >
           {res.label || `${res.width}x${res.height} (${res.aspectRatio})`}
         </option>

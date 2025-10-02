@@ -12,7 +12,7 @@ type OffloadDecisionAlgorithm = (
  * applying a decision algorithm to each frame and delegating the send action.
  */
 export function useOffloadScheduler(
-  rawStream: MediaStream | null,
+  offloadStream: MediaStream | null,
   transport: OffloadTransport,
   algorithm: OffloadDecisionAlgorithm,
 ) {
@@ -21,7 +21,7 @@ export function useOffloadScheduler(
   const frameCountRef = useRef(0);
 
   useEffect(() => {
-    if (!rawStream) return;
+    if (!offloadStream) return;
 
     if (!videoRef.current) {
       videoRef.current = document.createElement("video");
@@ -33,8 +33,8 @@ export function useOffloadScheduler(
     }
 
     const video = videoRef.current;
-    video.srcObject = rawStream;
-    console.log(rawStream.getTracks());
+    video.srcObject = offloadStream;
+    console.log(offloadStream.getTracks());
     video.play();
 
     const canvas = processingCanvasRef.current;
@@ -73,5 +73,5 @@ export function useOffloadScheduler(
       cancelAnimationFrame(animationFrameId);
       video.srcObject = null;
     };
-  }, [rawStream, transport, algorithm]);
+  }, [offloadStream, transport, algorithm]);
 }

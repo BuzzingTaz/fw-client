@@ -12,6 +12,7 @@ export interface TaskConstraints {
 }
 
 export interface VideoResolution {
+  id: string;
   width: number;
   height: number;
   aspectRatio: string;

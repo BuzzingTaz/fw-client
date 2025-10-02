@@ -1,10 +1,10 @@
-import { Task } from "@/app/lib/definitions";
+import { Task } from "@framework/definitions";
 import { useQuery } from "@tanstack/react-query";
 
 interface NetworkMethodDropdownProps {
   taskID: string;
   selectedNetworkMethod: string | null;
-  onChange: (networkMethod: string) => void;
+  onChange: React.ChangeEventHandler<HTMLSelectElement>;
 }
 
 export default function NetworkMethodDropdown({
@@ -34,8 +34,9 @@ export default function NetworkMethodDropdown({
 
   return (
     <select
+      name="networkMethod"
       value={selectedNetworkMethod || ""}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
       className="border border-gray-900 rounded-md p-2 bg-gray-100"
       disabled={!NetowrkMethodsFromTask}
     >

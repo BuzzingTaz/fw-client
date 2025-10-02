@@ -1,18 +1,19 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { OffloadTransport } from "./types";
+import { TransportMethods, WebRTCTransport } from "./types";
 
-export function useWebRTCTransport(): OffloadTransport {
+
+export function useWebRTCTransport(): WebRTCTransport {
   const [connectionState, setConnectionState] = useState<
     "disconnected" | "connecting" | "connected" | "failed"
   >("disconnected");
-  const transportMethod = useRef("webrtc"); // TODO: Fix type issue
-
+  const transportMethod = useRef<TransportMethods>("webrtc");
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  const onDataCallbackRef = useRef<(data: any) => void>();
+  const onDataCallbackRef = useRef<(data: any) => void>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const signalingSocketRef = useRef<WebSocket | null>(null);
   const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Data receiver handler
   const onDataReceived = useCallback(
     (callback: (data: any) => void) => {
       onDataCallbackRef.current = callback;
@@ -20,72 +21,69 @@ export function useWebRTCTransport(): OffloadTransport {
     [onDataCallbackRef],
   );
 
-  const connect = useCallback(
-    async (config: { signalingServerUrl: string }) => {
-      setConnectionState("connecting");
+  const connect = useCallback(async (config: { serverUrl: string }) => {
+    setConnectionState("connecting");
 
-      if (!outputCanvasRef.current) {
-        outputCanvasRef.current = document.createElement("canvas");
+    if (!outputCanvasRef.current) {
+      outputCanvasRef.current = document.createElement("canvas");
+    }
+
+    // Setup Peer Connection
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }], // Public STUN server
+    });
+    peerConnectionRef.current = pc;
+
+    // Add Media Tracks to send video to the edge
+    const outputStream = outputCanvasRef.current.captureStream(30);
+    outputStream
+      .getTracks()
+      .forEach((track) => pc.addTrack(track, outputStream));
+
+    // Create Data Channel for receiving results from the edge
+    const dc = pc.createDataChannel("results-channel");
+    dc.onmessage = (event) => {
+      onDataCallbackRef.current?.(JSON.parse(event.data));
+    };
+    dc.onopen = () => console.log("Data channel open");
+    dataChannelRef.current = dc;
+
+    // Setup Signaling via WebSockets
+    const ws = new WebSocket(config.serverUrl);
+    signalingSocketRef.current = ws;
+
+    ws.onopen = async () => {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
+    };
+
+    ws.onmessage = async (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "answer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(message));
+      } else if (message.type === "candidate") {
+        await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
       }
+    };
 
-      // Setup Peer Connection
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }], // Public STUN server
-      });
-      peerConnectionRef.current = pc;
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(
+          JSON.stringify({ type: "candidate", candidate: event.candidate }),
+        );
+      }
+    };
 
-      // Add Media Tracks to send video to the edge
-      const outputStream = outputCanvasRef.current.captureStream(30);
-      outputStream
-        .getTracks()
-        .forEach((track) => pc.addTrack(track, outputStream));
-
-      // Create Data Channel for receiving results from the edge
-      const dc = pc.createDataChannel("results-channel");
-      dc.onmessage = (event) => {
-        onDataCallbackRef.current?.(JSON.parse(event.data));
-      };
-      dc.onopen = () => console.log("Data channel open");
-      dataChannelRef.current = dc;
-
-      // Setup Signaling via WebSockets
-      const ws = new WebSocket(config.signalingServerUrl);
-      signalingSocketRef.current = ws;
-
-      ws.onopen = async () => {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
-      };
-
-      ws.onmessage = async (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === "answer") {
-          await pc.setRemoteDescription(new RTCSessionDescription(message));
-        } else if (message.type === "candidate") {
-          await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          ws.send(
-            JSON.stringify({ type: "candidate", candidate: event.candidate }),
-          );
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") {
-          setConnectionState("connected");
-          ws.close(); // Signaling is no longer needed
-        } else if (pc.connectionState === "failed") {
-          setConnectionState("failed");
-        }
-      };
-    },
-    [],
-  );
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "connected") {
+        setConnectionState("connected");
+        ws.close(); // Signaling is no longer needed
+      } else if (pc.connectionState === "failed") {
+        setConnectionState("failed");
+      }
+    };
+  }, []);
 
   const sendFrame = useCallback((frameCanvas: HTMLCanvasElement) => {
     // This transport's responsibility is to draw the incoming frame
@@ -109,11 +107,14 @@ export function useWebRTCTransport(): OffloadTransport {
   }, []);
 
   return {
-    connect,
-    disconnect,
-    sendFrame,
-    onDataReceived,
-    connectionState,
-    transportMethod,
+    pc: peerConnectionRef.current,
+    offloadTransport: {
+      connect,
+      disconnect,
+      sendFrame,
+      onDataReceived,
+      connectionState,
+      transportMethod: transportMethod.current,
+    },
   };
 }

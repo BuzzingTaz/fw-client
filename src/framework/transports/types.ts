@@ -3,7 +3,7 @@ export interface OffloadTransport {
    * Initiates a connection to the edge server.
    * @param config - Configuration object, e.g., signaling server URL.
    */
-  connect: (config: { signalingServerUrl: string }) => Promise<void>;
+  connect: (config: { serverUrl: string }) => Promise<void>;
 
   /**
    * Terminates the connection.
@@ -31,5 +31,17 @@ export interface OffloadTransport {
 
   /** Indicate the transport method used
    */
-  transportMethod: 'webrtc' | 'websocket';
+  transportMethod: TransportMethods;
 }
+
+export interface WebRTCTransport {
+  pc: RTCPeerConnection | null;
+  offloadTransport: OffloadTransport;
+}
+
+export interface WebSocketTransport {
+  socket: WebSocket | null;
+  offloadTransport: OffloadTransport;
+}
+
+export type TransportMethods = 'webrtc' | 'websocket' | 'none';

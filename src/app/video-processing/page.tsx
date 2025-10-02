@@ -1,66 +1,76 @@
 "use client";
 
-import { VideoResolution } from "@framework/definitions";
 import { useState, useEffect, useRef } from "react";
-import { useCamera, useOffloadScheduler } from "@framework/hooks";
-import { useWebRTCTransport } from "@framework/transports";
-// import { VideoCanvas } from "@framework/components";
-import CameraControls from "@/app/video-processing/ui/CameraController";
+import {
+  useCamera,
+  useOffloadScheduler,
+  useLocalFrameProcessor,
+} from "@framework/hooks";
+import useTransport from "@framework/transports/useTransport";
 import CanvasDisplay from "@/app/video-processing/ui/CanvasDisplay";
 import { BoundingBox } from "../video-processing/types/video-types";
+import ConfigOptions from "./ui/ConfigOptions";
+import { BenchmarkConfig } from "./definitions";
+import { useTrackActualResolution } from "./hooks/useTrackActualResolution";
 
 // An algorithm from the app that sends every 15th frame
 const every15thFrame = (frame: ImageData, frameCount: number) =>
   frameCount % 15 === 0;
 
 export default function BenchmarkPage() {
-  // Get the raw camera stream
+  const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>({
+    resolution: null,
+    fps: null,
+    networkMethod: "none",
+    offloadScheduler: null,
+    taskScheduler: null,
+    taskSchedulerBufferSize: null,
+  });
+  const handleBenchmarkConfigChange = (newConfig: BenchmarkConfig) => {
+    setBenchmarkConfig(newConfig);
+    console.debug("Benchmark config updated:", newConfig);
+  };
+
+  // Get basic camera functions and stream
   const {
     cameraStream: rawCameraStream,
     startCamera,
     stopCamera,
   } = useCamera();
 
-  const [selectedResolution, setSelectedResolution] =
-    useState<VideoResolution | null>(null);
-  const [selectedFps, setSelectedFps] = useState<number | null>(null);
-  const [selectedNetworkMethod, setSelectedNetworkMethod] = useState<
-    string | null
-  >(null);
-  const [actualResolution, setActualResolution] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
-
-  // Track actual video resolution (mediaDevices.getUserMedia may not respect constraints)
+  // Create clones of camera stream for local and offloaded processing
+  const localCameraStream = useRef<MediaStream | null>(null);
+  const offloadCameraStream = useRef<MediaStream | null>(null);
   useEffect(() => {
-    if (!rawCameraStream) return;
-    const cameraTrack = rawCameraStream.getVideoTracks()[0];
-    if (!cameraTrack) return;
-
-    const updateResolution = () => {
-      const settings = cameraTrack.getSettings();
-      setActualResolution({
-        width: settings.width || 0,
-        height: settings.height || 0,
-      });
-    };
-
-    updateResolution();
-
-    const handleSettingsChange = () => updateResolution();
-    cameraTrack.addEventListener("settingschange", handleSettingsChange);
-    return () => {
-      cameraTrack.removeEventListener("settingschange", handleSettingsChange);
-    };
+    if (!rawCameraStream) {
+      localCameraStream.current = null;
+      offloadCameraStream.current = null;
+      return;
+    }
+    localCameraStream.current = rawCameraStream.clone();
+    offloadCameraStream.current = rawCameraStream.clone();
   }, [rawCameraStream]);
 
+  // Track actual resolution of the camera stream
+  const { actualResolution } = useTrackActualResolution(rawCameraStream);
+
   // Instantiate the WebRTC transport
-  const webrtcTransport = useWebRTCTransport();
+  const { pc, offloadTransport } = useTransport(benchmarkConfig.networkMethod);
 
   // Run the scheduler.
-  useOffloadScheduler(rawCameraStream, webrtcTransport, every15thFrame);
+  useOffloadScheduler(
+    offloadCameraStream.current,
+    offloadTransport,
+    every15thFrame,
+  );
 
+  // Process the local camera stream with a simple frame processor (that does nothing here)
+  const { localProcessedStream } = useLocalFrameProcessor(
+    localCameraStream.current,
+    (data) => data,
+  );
+
+  // Example bounding boxes to overlay on the video
   const boundingBoxes: BoundingBox[] = [
     {
       x1: 10,
@@ -72,14 +82,26 @@ export default function BenchmarkPage() {
     },
   ];
 
-  const handleConnect = async () => {
-    if (!selectedResolution || !selectedFps || !selectedNetworkMethod) {
+  const handleStart = async () => {
+    if (
+      !benchmarkConfig.resolution ||
+      !benchmarkConfig.fps ||
+      !benchmarkConfig.networkMethod
+    ) {
       alert("Please select resolution, fps, and network method.");
       return;
     }
-    await startCamera(selectedResolution.width, selectedResolution.height, selectedFps);
-    await webrtcTransport.connect({
-      signalingServerUrl: "ws://localhost:8080/signal",
+    await startCamera(
+      benchmarkConfig.resolution?.width || 640,
+      benchmarkConfig.resolution?.height || 480,
+      benchmarkConfig.fps || 30,
+    );
+    await handleConnect();
+  };
+
+  const handleConnect = async () => {
+    await offloadTransport.connect({
+      serverUrl: "ws://localhost:9999/signal",
     });
   };
 
@@ -113,32 +135,38 @@ export default function BenchmarkPage() {
 
   return (
     <div>
-      <h1>WebRTC Offload Scheduling</h1>
+      <h1>Video Processing Benchmarks</h1>
       <div className="container mx-auto p-4">
-        <CameraControls
-          selectedResolution={selectedResolution}
-          selectedFps={selectedFps}
-          selectedNetworkMethod={selectedNetworkMethod}
-          onResolutionChange={setSelectedResolution}
-          onFpsChange={setSelectedFps}
-          onNetworkMethodChange={setSelectedNetworkMethod}
-          onStart={handleConnect}
+        <h2>Configuration options</h2>
+        <ConfigOptions
+          currentConfig={benchmarkConfig}
+          onConfigChange={handleBenchmarkConfigChange}
         />
+        <button
+          onClick={handleStart}
+          className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md"
+        >
+          Start Benchmark
+        </button>
+      </div>
+      <div>
+        <h2>Debug info</h2>
+        <div className="mt-4 text-center">
+          Connection Status: {offloadTransport?.connectionState}
+        </div>
+      </div>
+      <div>
+        <h2>Video Displays</h2>
         <div className="relative w-full max-w-4xl aspect-video bg-gray-900 rounded-lg overflow-hidden">
           <canvas
             ref={localCanvasRef}
             className="absolute top-0 left-0 w-full h-full"
           />
-
           <CanvasDisplay
             boundingBoxes={boundingBoxes}
             videoWidth={actualResolution?.width || null}
             videoHeight={actualResolution?.height || null}
           />
-        </div>
-
-        <div className="mt-4 text-center">
-          Connection Status: {webrtcTransport.connectionState}
         </div>
       </div>
     </div>

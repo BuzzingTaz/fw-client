@@ -1,15 +1,15 @@
 // TODO: AdUpdate sendFrame to fully handle data sending from scheduler
 
 import { useState, useRef, useCallback } from "react";
-import { OffloadTransport } from "./types";
+import { TransportMethods, WebSocketTransport } from "./types";
 
-export function useWebSocketTransport(): OffloadTransport {
+export function useWebSocketTransport(): WebSocketTransport {
   const [connectionState, setConnectionState] = useState<
     "disconnected" | "connecting" | "connected" | "failed"
   >("disconnected");
-  const transportMethod = "websocket";
+  const transportMethod = useRef<TransportMethods>("websocket");
   const socketRef = useRef<WebSocket | null>(null);
-  const onDataCallbackRef = useRef<(data: any) => void>();
+  const onDataCallbackRef = useRef<(data: any) => void>(null);
 
   const onDataReceived = useCallback((callback: (data: any) => void) => {
     onDataCallbackRef.current = callback;
@@ -49,11 +49,14 @@ export function useWebSocketTransport(): OffloadTransport {
   }, []);
 
   return {
-    connect,
-    disconnect,
-    sendFrame,
-    onDataReceived,
-    connectionState,
-    transportMethod,
+    socket: socketRef.current,
+    offloadTransport: {
+      connect,
+      disconnect,
+      sendFrame,
+      onDataReceived,
+      connectionState,
+      transportMethod: transportMethod.current,
+    },
   };
 }

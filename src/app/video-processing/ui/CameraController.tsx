@@ -1,6 +1,6 @@
 "use client";
 
-import { VideoResolution } from "@/app/lib/definitions";
+import { VideoResolution } from "@framework/definitions";
 import ResolutionDropdown from "@/app/ui/components/ResolutionDropdown";
 import FpsDropdown from "@/app/ui/components/FpsDropdown";
 import NetworkMethodDropdown from "@/app/ui/components/NetworkMethodDropdown";

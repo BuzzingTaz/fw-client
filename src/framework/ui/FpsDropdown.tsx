@@ -1,10 +1,10 @@
-import { Task } from "@/app/lib/definitions";
+import { Task } from "@framework/definitions";
 import { useQuery } from "@tanstack/react-query";
 
 interface FpsDropdownProps {
   taskID: string;
   selectedFps: number | null;
-  onChange: (fps: number) => void;
+  onChange: React.ChangeEventHandler<HTMLSelectElement>;
 }
 
 export default function FpsDropdown({
@@ -33,9 +33,10 @@ export default function FpsDropdown({
     ?.constraints.fps;
   return (
     <select
-      value={selectedFps || ""}
-      onChange={(e) => onChange(Number(e.target.value))}
       className="border border-gray-900 rounded-md p-2 bg-gray-100"
+      name="fps"
+      value={selectedFps || ""}
+      onChange={onChange}
       disabled={!fpsListFromTask}
     >
       {fpsListFromTask!.map((fps: number) => (
