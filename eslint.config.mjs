@@ -11,10 +11,23 @@ const compat = new FlatCompat({
 
 const eslintConfig = [
   ...compat.config({
-    extends: ["next", "next/core-web-vitals", "next/typescript", "prettier"],
+    extends: [
+      "next",
+      "next/core-web-vitals",
+      "next/typescript",
+      "prettier",
+      "plugin:react/recommended",
+      "plugin:react-hooks/recommended",
+    ],
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
     rules: {
       "@typescript-eslint/no-unused-vars": "warn", // Warn about unused variables
       "no-console": "warn", // Warn about console statements
+      "react/react-in-jsx-scope": "off",
     },
   }),
 ];

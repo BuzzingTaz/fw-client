@@ -16,44 +16,31 @@ export function useOffloadScheduler(
   transport: OffloadTransport,
   algorithm: OffloadDecisionAlgorithm,
 ) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const processingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameCountRef = useRef(0);
 
   useEffect(() => {
     if (!offloadStream) return;
 
-    if (!videoRef.current) {
-      videoRef.current = document.createElement("video");
-      videoRef.current.muted = true;
-      videoRef.current.playsInline = true;
-    }
-    if (!processingCanvasRef.current) {
-      processingCanvasRef.current = document.createElement("canvas");
-    }
-
-    const video = videoRef.current;
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
     video.srcObject = offloadStream;
-    console.log(offloadStream.getTracks());
-    video.play();
 
-    const canvas = processingCanvasRef.current;
+    const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      console.error("failed to get context");
+      return;
+    }
 
     let animationFrameId: number;
 
     const processFrame = () => {
-      if (video.paused || video.ended || !ctx) {
+      if (video.paused || video.ended || !ctx || !video.videoWidth) {
         animationFrameId = requestAnimationFrame(processFrame);
         return;
       }
 
-      if (canvas.width !== video.videoWidth) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-      }
-
-      // 1. Draw frame to a canvas to get pixel data
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       frameCountRef.current++;
@@ -67,11 +54,25 @@ export function useOffloadScheduler(
       animationFrameId = requestAnimationFrame(processFrame);
     };
 
-    animationFrameId = requestAnimationFrame(processFrame);
+    const handleMetadataLoaded = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      animationFrameId = requestAnimationFrame(processFrame);
+    };
+
+    video.addEventListener("loadedmetadata", handleMetadataLoaded);
+    video.play().catch((error) => {
+      console.error("Video play failed:", error);
+    });
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      video.srcObject = null;
+      video.removeEventListener("loadedmetadata", handleMetadataLoaded);
+      video.pause();
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
     };
   }, [offloadStream, transport, algorithm]);
 }

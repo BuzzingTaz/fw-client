@@ -1,6 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { TransportMethods, WebRTCTransport } from "./types";
-
 
 export function useWebRTCTransport(): WebRTCTransport {
   const [connectionState, setConnectionState] = useState<
@@ -14,12 +13,9 @@ export function useWebRTCTransport(): WebRTCTransport {
   const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Data receiver handler
-  const onDataReceived = useCallback(
-    (callback: (data: any) => void) => {
-      onDataCallbackRef.current = callback;
-    },
-    [onDataCallbackRef],
-  );
+  const onDataReceived = useCallback((callback: (data: any) => void) => {
+    onDataCallbackRef.current = callback;
+  }, []);
 
   const connect = useCallback(async (config: { serverUrl: string }) => {
     setConnectionState("connecting");
@@ -55,22 +51,28 @@ export function useWebRTCTransport(): WebRTCTransport {
     ws.onopen = async () => {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
+      ws.send(
+        JSON.stringify({ webrtc_signal: { type: "offer", sdp: offer.sdp } }),
+      );
     };
 
     ws.onmessage = async (event) => {
       const message = JSON.parse(event.data);
-      if (message.type === "answer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(message));
-      } else if (message.type === "candidate") {
-        await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+      if (!message.webrtc_signal) return;
+      const messageSignal = message.webrtc_signal;
+      if (messageSignal.type === "answer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(messageSignal));
+      } else if (messageSignal.type === "candidate") {
+        await pc.addIceCandidate(new RTCIceCandidate(messageSignal.candidate));
       }
     };
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         ws.send(
-          JSON.stringify({ type: "candidate", candidate: event.candidate }),
+          JSON.stringify({
+            webrtc_signal: { type: "candidate", candidate: event.candidate },
+          }),
         );
       }
     };
@@ -78,43 +80,60 @@ export function useWebRTCTransport(): WebRTCTransport {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setConnectionState("connected");
-        ws.close(); // Signaling is no longer needed
       } else if (pc.connectionState === "failed") {
         setConnectionState("failed");
       }
     };
   }, []);
 
-  const sendFrame = useCallback((frameCanvas: HTMLCanvasElement) => {
-    // This transport's responsibility is to draw the incoming frame
-    // onto its own canvas, which is being streamed via WebRTC.
-    if (connectionState === "connected" && outputCanvasRef.current) {
-      const outputCanvas = outputCanvasRef.current;
-      const ctx = outputCanvas.getContext("2d");
-      if (ctx) {
-        if (outputCanvas.width !== frameCanvas.width) {
-          outputCanvas.width = frameCanvas.width;
-          outputCanvas.height = frameCanvas.height;
+  const sendFrame = useCallback(
+    (frameCanvas: HTMLCanvasElement) => {
+      requestAnimationFrame(() => {
+        if (connectionState === "connected" && outputCanvasRef.current) {
+          const outputCanvas = outputCanvasRef.current;
+          const ctx = outputCanvas.getContext("2d");
+          if (ctx) {
+            if (outputCanvas.width !== frameCanvas.width) {
+              outputCanvas.width = frameCanvas.width;
+              outputCanvas.height = frameCanvas.height;
+            }
+            ctx.drawImage(frameCanvas, 0, 0);
+          }
         }
-        ctx.drawImage(frameCanvas, 0, 0);
-      }
-    }
-  }, []);
+      });
+    },
+    [connectionState],
+  );
 
   const disconnect = useCallback(() => {
     peerConnectionRef.current?.close();
+    signalingSocketRef.current?.close();
     setConnectionState("disconnected");
   }, []);
 
-  return {
-    pc: peerConnectionRef.current,
-    offloadTransport: {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
+
+  const offloadTransport = useMemo(
+    () => ({
       connect,
       disconnect,
       sendFrame,
       onDataReceived,
       connectionState,
       transportMethod: transportMethod.current,
-    },
-  };
+    }),
+    [connect, disconnect, sendFrame, onDataReceived, connectionState],
+  );
+  return useMemo(
+    () => ({
+      pc: peerConnectionRef.current,
+      offloadTransport,
+    }),
+    [offloadTransport],
+  );
 }
