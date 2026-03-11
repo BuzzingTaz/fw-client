@@ -12,6 +12,7 @@ import { BoundingBox } from "../video-processing/types/video-types";
 import ConfigOptions from "./ui/ConfigOptions";
 import { BenchmarkConfig } from "./definitions";
 import { useTrackActualResolution } from "./hooks/useTrackActualResolution";
+import { useMediaStreamToCanvasRef } from "./hooks/useMediaStreamToCanvas";
 
 // An algorithm from the app that sends every 15th frame
 const every15thFrame = (frame: ImageData, frameCount: number) =>
@@ -39,16 +40,16 @@ export default function BenchmarkPage() {
   } = useCamera();
 
   // Create clones of camera stream for local and offloaded processing
-  const localCameraStream = useRef<MediaStream | null>(null);
-  const offloadCameraStream = useRef<MediaStream | null>(null);
+  const localCameraStreamRef = useRef<MediaStream | null>(null);
+  const offloadCameraStreamRef = useRef<MediaStream | null>(null);
   useEffect(() => {
     if (!rawCameraStream) {
-      localCameraStream.current = null;
-      offloadCameraStream.current = null;
+      localCameraStreamRef.current = null;
+      offloadCameraStreamRef.current = null;
       return;
     }
-    localCameraStream.current = rawCameraStream.clone();
-    offloadCameraStream.current = rawCameraStream.clone();
+    localCameraStreamRef.current = rawCameraStream.clone();
+    offloadCameraStreamRef.current = rawCameraStream.clone();
   }, [rawCameraStream]);
 
   // Track actual resolution of the camera stream
@@ -59,14 +60,14 @@ export default function BenchmarkPage() {
 
   // Run the scheduler.
   useOffloadScheduler(
-    offloadCameraStream.current,
+    offloadCameraStreamRef.current,
     offloadTransport,
     every15thFrame,
   );
 
   // Process the local camera stream with a simple frame processor (that does nothing here)
   const { localProcessedStream } = useLocalFrameProcessor(
-    localCameraStream.current,
+    localCameraStreamRef.current,
     (data) => data,
   );
 
@@ -101,37 +102,11 @@ export default function BenchmarkPage() {
 
   const handleConnect = async () => {
     await offloadTransport.connect({
-      serverUrl: "ws://localhost:9999/signal",
+      serverUrl: "ws://localhost:9999/ws/testUserID",
     });
   };
 
-  const localCanvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!rawCameraStream || !localCanvasRef.current) return;
-
-    const video = document.createElement("video");
-    video.srcObject = rawCameraStream;
-    video.play();
-
-    const canvas = localCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const draw = () => {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-      requestAnimationFrame(draw);
-    };
-    draw();
-
-    return () => {
-      video.pause();
-      video.srcObject = null;
-    };
-  }, [rawCameraStream]);
+  const rawCanvasRef = useMediaStreamToCanvasRef(rawCameraStream);
 
   return (
     <div>
@@ -159,7 +134,7 @@ export default function BenchmarkPage() {
         <h2>Video Displays</h2>
         <div className="relative w-full max-w-4xl aspect-video bg-gray-900 rounded-lg overflow-hidden">
           <canvas
-            ref={localCanvasRef}
+            ref={rawCanvasRef}
             className="absolute top-0 left-0 w-full h-full"
           />
           <CanvasDisplay

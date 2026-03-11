@@ -17,62 +17,81 @@ export function useOffloadScheduler(
   algorithm: OffloadDecisionAlgorithm,
 ) {
   const frameCountRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!offloadStream) return;
 
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.srcObject = offloadStream;
+    if (!canvasRef.current) {
+      canvasRef.current = document.createElement("canvas");
+    }
 
-    const canvas = document.createElement("canvas");
+    const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) {
       console.error("failed to get context");
       return;
     }
 
+    if (!videoRef.current) {
+      videoRef.current = document.createElement("video");
+      videoRef.current.muted = true;
+      videoRef.current.playsInline = true;
+      videoRef.current.autoplay = true;
+    }
+
+    const video = videoRef.current;
+    video.srcObject = offloadStream;
+
     let animationFrameId: number;
-
     const processFrame = () => {
-      if (video.paused || video.ended || !ctx || !video.videoWidth) {
-        animationFrameId = requestAnimationFrame(processFrame);
-        return;
+      if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+        if (
+          canvas.width !== video.videoWidth ||
+          canvas.height !== video.videoHeight
+        ) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // NOTE: Maybe look at this later; the following lines are the only differences from the useMediaStreamToCanvas hook
+        // Try modularizing
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        frameCountRef.current++;
+        // Run the decision algorithm
+        if (algorithm(imageData, frameCountRef.current)) {
+          // Delegate: Call sendFrame on the transport.
+          transport.sendFrame(canvas);
+          console.log("offloaded frame", frameCountRef.current);
+        }
       }
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      frameCountRef.current++;
-
-      // 2. Run the decision algorithm
-      if (algorithm(imageData, frameCountRef.current)) {
-        // 3. Delegate: Call sendFrame on the transport.
-        transport.sendFrame(canvas);
-      }
-
       animationFrameId = requestAnimationFrame(processFrame);
     };
 
-    const handleMetadataLoaded = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      animationFrameId = requestAnimationFrame(processFrame);
+    const handleLoadedMetadata = () => {
+      video.play().then(() => {
+        processFrame();
+      }).catch((error) => {
+        console.error("Video play failed in Offload Scheduler:", error);
+      });
     };
 
-    video.addEventListener("loadedmetadata", handleMetadataLoaded);
-    video.play().catch((error) => {
-      console.error("Video play failed:", error);
-    });
+
+    // Wait for metadata to load before playing
+    // video.play() can fail if called before metadata is loaded
+    if (video.readyState >= video.HAVE_METADATA) {
+      handleLoadedMetadata();
+    } else {
+      video.addEventListener("loadedmetadata", handleLoadedMetadata);
+    }
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      video.removeEventListener("loadedmetadata", handleMetadataLoaded);
       video.pause();
-      if (video.srcObject) {
-        video.srcObject = null;
-      }
+      video.srcObject = null;
     };
   }, [offloadStream, transport, algorithm]);
 }

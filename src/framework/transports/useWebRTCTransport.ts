@@ -5,12 +5,16 @@ export function useWebRTCTransport(): WebRTCTransport {
   const [connectionState, setConnectionState] = useState<
     "disconnected" | "connecting" | "connected" | "failed"
   >("disconnected");
+  const connectionStateRef = useRef<
+    "disconnected" | "connecting" | "connected" | "failed"
+  >("disconnected");
   const transportMethod = useRef<TransportMethods>("webrtc");
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const onDataCallbackRef = useRef<(data: any) => void>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const signalingSocketRef = useRef<WebSocket | null>(null);
   const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const outputCanvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   // Data receiver handler
   const onDataReceived = useCallback((callback: (data: any) => void) => {
@@ -19,9 +23,11 @@ export function useWebRTCTransport(): WebRTCTransport {
 
   const connect = useCallback(async (config: { serverUrl: string }) => {
     setConnectionState("connecting");
+    connectionStateRef.current = "connecting";
 
     if (!outputCanvasRef.current) {
       outputCanvasRef.current = document.createElement("canvas");
+      outputCanvasCtxRef.current = outputCanvasRef.current.getContext("2d");
     }
 
     // Setup Peer Connection
@@ -36,34 +42,39 @@ export function useWebRTCTransport(): WebRTCTransport {
       .getTracks()
       .forEach((track) => pc.addTrack(track, outputStream));
 
-    // Create Data Channel for receiving results from the edge
-    const dc = pc.createDataChannel("results-channel");
-    dc.onmessage = (event) => {
-      onDataCallbackRef.current?.(JSON.parse(event.data));
+    pc.ondatachannel = (event) => {
+      const dc = event.channel;
+      dc.onmessage = (event) => {
+        onDataCallbackRef.current?.(JSON.parse(event.data));
+      };
+      dc.onopen = () => console.log("Data channel open");
+      dataChannelRef.current = dc;
     };
-    dc.onopen = () => console.log("Data channel open");
-    dataChannelRef.current = dc;
 
     // Setup Signaling via WebSockets
     const ws = new WebSocket(config.serverUrl);
     signalingSocketRef.current = ws;
 
     ws.onopen = async () => {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      ws.send(
-        JSON.stringify({ webrtc_signal: { type: "offer", sdp: offer.sdp } }),
-      );
+      console.log("Signaling WebSocket connected");
     };
 
     ws.onmessage = async (event) => {
       const message = JSON.parse(event.data);
       if (!message.webrtc_signal) return;
+
       const messageSignal = message.webrtc_signal;
-      if (messageSignal.type === "answer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(messageSignal));
-      } else if (messageSignal.type === "candidate") {
+      if (messageSignal.type === "candidate") {
         await pc.addIceCandidate(new RTCIceCandidate(messageSignal.candidate));
+      } else if (messageSignal.type === "offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(messageSignal));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(
+          JSON.stringify({
+            webrtc_signal: { type: "answer", sdp: answer.sdp },
+          }),
+        );
       }
     };
 
@@ -80,35 +91,41 @@ export function useWebRTCTransport(): WebRTCTransport {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setConnectionState("connected");
+        connectionStateRef.current = "connected";
       } else if (pc.connectionState === "failed") {
         setConnectionState("failed");
+        connectionStateRef.current = "failed";
       }
     };
   }, []);
 
-  const sendFrame = useCallback(
-    (frameCanvas: HTMLCanvasElement) => {
-      requestAnimationFrame(() => {
-        if (connectionState === "connected" && outputCanvasRef.current) {
-          const outputCanvas = outputCanvasRef.current;
-          const ctx = outputCanvas.getContext("2d");
-          if (ctx) {
-            if (outputCanvas.width !== frameCanvas.width) {
-              outputCanvas.width = frameCanvas.width;
-              outputCanvas.height = frameCanvas.height;
-            }
-            ctx.drawImage(frameCanvas, 0, 0);
-          }
-        }
-      });
-    },
-    [connectionState],
-  );
+  const sendFrame = useCallback((frameCanvas: HTMLCanvasElement) => {
+    if (
+      connectionStateRef.current === "connected" &&
+      outputCanvasRef.current &&
+      outputCanvasCtxRef.current
+    ) {
+      const outputCanvas = outputCanvasRef.current;
+      const ctx = outputCanvasCtxRef.current;
+      if (
+        outputCanvas.width !== frameCanvas.width ||
+        outputCanvas.height !== frameCanvas.height
+      ) {
+        outputCanvas.width = frameCanvas.width;
+        outputCanvas.height = frameCanvas.height;
+      }
+      ctx.drawImage(frameCanvas, 0, 0);
+      console.log("frame drawn to offload canvas");
+    } else {
+      console.log("sendFrame SKIPPED - condition failed");
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
     peerConnectionRef.current?.close();
     signalingSocketRef.current?.close();
     setConnectionState("disconnected");
+    connectionStateRef.current = "disconnected";
   }, []);
 
   // Cleanup on unmount
