@@ -16,7 +16,7 @@ import { useMediaStreamToCanvasRef } from "./hooks/useMediaStreamToCanvas";
 
 // An algorithm from the app that sends every 15th frame
 const every15thFrame = (frame: ImageData, frameCount: number) =>
-  frameCount % 15 === 0;
+  frameCount % 2 === 0;
 
 export default function BenchmarkPage() {
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>({
@@ -72,16 +72,16 @@ export default function BenchmarkPage() {
   );
 
   // Example bounding boxes to overlay on the video
-  const boundingBoxes: BoundingBox[] = [
+  const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([
     {
-      x1: 10,
-      y1: 10,
-      x2: 100,
-      y2: 100,
-      confidence: 1,
+      x: 10,
+      y: 10,
+      dx: 100,
+      dy: 100,
       label: "hello",
+      confidence: 1.0,
     },
-  ];
+  ]);
 
   const handleStart = async () => {
     if (
@@ -102,7 +102,11 @@ export default function BenchmarkPage() {
 
   const handleConnect = async () => {
     await offloadTransport.connect({
-      serverUrl: "ws://localhost:9999/ws/testUserID",
+      serverUrl: "ws://192.168.1.204:9999/ws/VideoProcessingBenchmarks",
+    });
+
+    offloadTransport.onDataReceived((data) => {
+      setBoundingBoxes(data.detections || []);
     });
   };
 

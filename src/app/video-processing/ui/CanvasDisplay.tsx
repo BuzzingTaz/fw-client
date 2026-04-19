@@ -63,16 +63,16 @@ export default function CanvasDisplay({
     ctx.fillStyle = "#FF0000";
 
     boundingBoxes.forEach((box) => {
-      const scaledX = box.x1 * scaleX;
-      const scaledY = box.y1 * scaleY;
-      const scaledWidth = (box.x2 - box.x1) * scaleX;
-      const scaledHeight = (box.y2 - box.y1) * scaleY;
+      const scaledX = box.x * scaleX;
+      const scaledY = box.y * scaleY;
+      const scaledWidth = box.dx * scaleX;
+      const scaledHeight = box.dy * scaleY;
 
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
       ctx.fillText(
         `${box.label} (${Math.round(box.confidence * 100)}%)`,
-        box.x1,
-        box.y1 - 5,
+        box.x,
+        box.y - 5,
       );
     });
   }, [boundingBoxes, videoWidth, videoHeight, containerSize]);

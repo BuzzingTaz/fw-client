@@ -3,12 +3,12 @@ import { VideoResolution } from "@/app/lib/definitions";
 // TODO: Generalize types and move to lib
 
 export type BoundingBox = {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  confidence: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
   label: string;
+  confidence: number;
 };
 
 export type VideoFrameData = {
