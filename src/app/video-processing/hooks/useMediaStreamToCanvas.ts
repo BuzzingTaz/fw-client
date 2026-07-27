@@ -8,7 +8,7 @@ export const useMediaStreamToCanvasRef = (mediaStream: MediaStream | null) => {
     if (!mediaStream || !localCanvasRef.current) return;
 
     const canvas = localCanvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
     // Create video element only once and store in ref

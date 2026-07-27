@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { TransportMethods, WebSocketTransport } from "./types";
 
 export function useWebSocketTransport(): WebSocketTransport {
-  const [connectionState, setConnectionState] = useState<
+  const [transportConnectionState, setTransportConnectionState] = useState<
     "disconnected" | "connecting" | "connected" | "failed"
   >("disconnected");
   const transportMethod = useRef<TransportMethods>("websocket");
@@ -16,13 +16,13 @@ export function useWebSocketTransport(): WebSocketTransport {
   }, []);
 
   const connect = useCallback(async (config: { serverUrl: string }) => {
-    setConnectionState("connecting");
+    setTransportConnectionState("connecting");
 
     const ws = new WebSocket(config.serverUrl);
     socketRef.current = ws;
 
     ws.onopen = () => {
-      setConnectionState("connected");
+      setTransportConnectionState("connected");
     };
 
     ws.onmessage = (event) => {
@@ -30,15 +30,15 @@ export function useWebSocketTransport(): WebSocketTransport {
     };
 
     ws.onerror = () => {
-      setConnectionState("failed");
+      setTransportConnectionState("failed");
     };
 
     ws.onclose = () => {
-      setConnectionState("disconnected");
+      setTransportConnectionState("disconnected");
     };
   }, []);
 
-  const sendFrame = useCallback((frame: Blob) => {
+  const sendFrame = useCallback((frame: Blob, frameId?: number) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(frame);
     }
@@ -55,7 +55,7 @@ export function useWebSocketTransport(): WebSocketTransport {
       disconnect,
       sendFrame,
       onDataReceived,
-      connectionState,
+      connectionState: transportConnectionState,
       transportMethod: transportMethod.current,
     },
   };

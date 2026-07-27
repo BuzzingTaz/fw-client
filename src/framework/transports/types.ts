@@ -15,7 +15,7 @@ export interface OffloadTransport {
    * The transport is responsible for handling the canvas appropriately.
    * @param frameCanvas - The canvas element containing the video frame to be sent.
    */
-  sendFrame: (frameCanvas: HTMLCanvasElement) => void;
+  sendFrame: (frameCanvas: HTMLCanvasElement, frameId?: number) => void;
 
   /**
    * A way to register a callback function that will be invoked

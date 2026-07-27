@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { OffloadTransport } from "../transports/types";
+import { telemetryStore } from "../telemetry/TelemetryStore";
 
 type OffloadDecisionAlgorithm = (
   frame: ImageData,
@@ -19,6 +20,17 @@ export function useOffloadScheduler(
   const frameCountRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const transportRef = useRef(transport);
+  const algorithmRef = useRef(algorithm);
+
+  useEffect(() => {
+    transportRef.current = transport;
+  }, [transport]);
+
+  useEffect(() => {
+    algorithmRef.current = algorithm;
+  }, [algorithm]);
 
   useEffect(() => {
     if (!offloadStream) return;
@@ -60,12 +72,18 @@ export function useOffloadScheduler(
         // NOTE: Maybe look at this later; the following lines are the only differences from the useMediaStreamToCanvas hook
         // Try modularizing
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        frameCountRef.current++;
+        const currentFrameCount = ++frameCountRef.current;
+        telemetryStore.logEvent(currentFrameCount, "capture", performance.now());
+
         // Run the decision algorithm
-        if (algorithm(imageData, frameCountRef.current)) {
+        const currentTransport = transportRef.current;
+        const currentAlgorithm = algorithmRef.current;
+
+        if (currentTransport.connectionState === 'connected' && currentAlgorithm(imageData, currentFrameCount)) {
           // Delegate: Call sendFrame on the transport.
-          transport.sendFrame(canvas);
-          console.log("offloaded frame", frameCountRef.current);
+          currentTransport.sendFrame(canvas, currentFrameCount);
+          telemetryStore.logEvent(currentFrameCount, "offload", performance.now());
+          console.log("offloaded frame", currentFrameCount);
         }
       }
       animationFrameId = requestAnimationFrame(processFrame);
@@ -92,6 +110,7 @@ export function useOffloadScheduler(
       cancelAnimationFrame(animationFrameId);
       video.pause();
       video.srcObject = null;
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
     };
-  }, [offloadStream, transport, algorithm]);
+  }, [offloadStream]);
 }
