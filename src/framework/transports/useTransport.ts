@@ -31,7 +31,10 @@ function useTransport(
       disconnect: () => {
         console.warn("No transport selected.");
       },
-      sendFrame: () => {
+      setSourceStream: () => {
+        console.warn("No transport selected.");
+      },
+      trackCaptureTime: () => {
         console.warn("No transport selected.");
       },
       onDataReceived: () => {

@@ -1,4 +1,4 @@
-import { VideoResolution } from "@/app/lib/definitions";
+import { VideoResolution } from "@/framework/definitions";
 
 // TODO: Generalize types and move to lib
 

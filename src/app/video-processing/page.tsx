@@ -16,6 +16,8 @@ import { useTrackActualResolution } from "./hooks/useTrackActualResolution";
 import { useMediaStreamToCanvasRef } from "./hooks/useMediaStreamToCanvas";
 import { telemetryStore } from "@/framework/telemetry/TelemetryStore";
 
+declare var VideoFrame: any;
+
 export default function BenchmarkPage() {
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>({
     resolution: null,
@@ -66,12 +68,14 @@ export default function BenchmarkPage() {
   // Timing based Offload Algorithm
   const lastOffloadTimeRef = useRef<number>(0);
   const timingBasedOffload = useCallback(
-    (frame: ImageData, frameCount: number) => {
+    (frame: VideoFrame, frameCount: number) => {
       const offFps = benchmarkConfig.offloadFps || 15;
       const targetInterval = 1000 / offFps;
       const now = performance.now();
 
-      if (now - lastOffloadTimeRef.current >= targetInterval) {
+      const tolerance = 15;
+
+      if (now - lastOffloadTimeRef.current >= (targetInterval - tolerance)) {
         lastOffloadTimeRef.current = now;
         return true;
       }
@@ -199,7 +203,7 @@ export default function BenchmarkPage() {
 
     offloadTransport.onDataReceived((data: any) => {
       const t = performance.now();
-      const frameId = data.frameId;
+      const frameId = data.timestamp;
       if (frameId !== undefined) {
         telemetryStore.logEvent(frameId, "receive", t);
         pendingDisplayQueue.current.push(frameId);

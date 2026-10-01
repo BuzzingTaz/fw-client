@@ -10,12 +10,18 @@ export interface OffloadTransport {
    */
   disconnect: () => void;
 
- /**
-   * Sends a single video frame to the edge.
-   * The transport is responsible for handling the canvas appropriately.
-   * @param frameCanvas - The canvas element containing the video frame to be sent.
+  /**
+   * Sets the source MediaStream for the transport.
+   * This stream is directly piped to the transport layer.
+   * @param stream - The processed MediaStream containing the filtered tracks.
    */
-  sendFrame: (frameCanvas: HTMLCanvasElement, frameId?: number) => void;
+  setSourceStream: (stream: MediaStream) => void;
+
+  /**
+   * Records the capture time for an offloaded frame to correlate telemetry.
+   * @param time - The performance.now() timestamp when the frame was captured.
+   */
+  trackCaptureTime: (time: number) => void;
 
   /**
    * A way to register a callback function that will be invoked

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { TransportMethods, WebRTCTransport } from "./types";
+import { telemetryStore } from "../telemetry/TelemetryStore";
 
 type SignalMessage = {
   webrtc_signal?: {
@@ -25,6 +26,7 @@ export function useWebRTCTransport(): WebRTCTransport {
 
   const captureStartedRef = useRef(false);
   const outputStreamRef = useRef<MediaStream | null>(null);
+  const captureTimeQueueRef = useRef<number[]>([]);
 
   const onDataReceived = useCallback((callback: (data: unknown) => void) => {
     onDataCallbackRef.current = callback;
@@ -43,6 +45,8 @@ export function useWebRTCTransport(): WebRTCTransport {
 
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      // @ts-ignore
+      encodedInsertableStreams: true,
     });
     peerConnectionRef.current = pc;
 
@@ -97,6 +101,13 @@ export function useWebRTCTransport(): WebRTCTransport {
           }
 
           const answer = await pc.createAnswer();
+
+          // Force a high starting bitrate (5000 kbps) to prevent the WebRTC engine
+          // from aggressively dropping frames or downscaling resolution during the slow ramp-up phase.
+          if (answer.sdp) {
+            answer.sdp = answer.sdp.replace(/a=mid:(.*)\r\n/g, 'a=mid:$1\r\nb=AS:5000\r\n');
+          }
+
           await pc.setLocalDescription(answer);
 
           ws.send(
@@ -130,62 +141,85 @@ export function useWebRTCTransport(): WebRTCTransport {
     };
   }, []);
 
-  const sendFrame = useCallback(
-    (frameCanvas: HTMLCanvasElement, frameId?: number) => {
-      if (
-        transportConnectionState !== "connecting" &&
-        transportConnectionState !== "connected"
-      ) {
-        return;
-      }
-      if (!outputCanvasRef.current || !outputCanvasCtxRef.current) return;
+  const trackCaptureTime = useCallback((time: number) => {
+    captureTimeQueueRef.current.push(time);
+  }, []);
 
-      if (frameCanvas.width === 0 || frameCanvas.height === 0) return;
+  const setSourceStream = useCallback((stream: MediaStream) => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
 
-      const pc = peerConnectionRef.current;
-      if (!captureStartedRef.current && pc) {
-        const canvas = outputCanvasRef.current;
-        const ctx = outputCanvasCtxRef.current;
-        canvas.width = frameCanvas.width;
-        canvas.height = frameCanvas.height;
-        ctx.drawImage(frameCanvas, 0, 0);
+    outputStreamRef.current = stream;
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
 
-        const stream = canvas.captureStream(0);
-        outputStreamRef.current = stream;
-        const track = stream.getVideoTracks()[0];
+    try {
+      track.contentHint = "detail";
+    } catch (e) {
+      // Ignore if not supported
+    }
 
-        if (track) {
-          applyCanvasVideoTrackHints(track);
+    let sender = pc.getSenders().find(s => !s.track || s.track.kind === "video");
+    if (sender) {
+      sender.replaceTrack(track).catch(e => console.error("replaceTrack failed", e));
 
-          // Use replaceTrack on the existing sender to avoid renegotiation
-          // and avoid initializing the encoder until the canvas has the correct dimensions!
-          const sender = pc.getSenders().find(s => !s.track || s.track.kind === "video");
-          if (sender) {
-            sender.replaceTrack(track).catch(e => console.error("replaceTrack failed", e));
-          } else {
-            pc.addTrack(track, stream);
+      try {
+        const params = sender.getParameters();
+        if (params) {
+          // @ts-ignore - degradationPreference is valid in WebRTC but sometimes missing in TS dom libs
+          params.degradationPreference = "maintain-resolution";
+          if (!params.encodings) {
+            params.encodings = [{}];
           }
+          if (params.encodings.length > 0) {
+            params.encodings[0].maxBitrate = 5000000;
+            params.encodings[0].maxFramerate = 60;
+          }
+          sender.setParameters(params).catch(e => console.error("setParameters failed", e));
         }
-
-        captureStartedRef.current = true;
-        requestCanvasCaptureFrame(stream);
-        return;
+      } catch (e) {
+        console.error("Failed to set degradationPreference", e);
       }
+    } else {
+      sender = pc.addTrack(track, stream);
+    }
 
-      const ctx = outputCanvasCtxRef.current;
-      ctx.drawImage(frameCanvas, 0, 0);
-      requestCanvasCaptureFrame(outputStreamRef.current);
-
-      if (frameId !== undefined && dataChannelRef.current?.readyState === "open") {
-        dataChannelRef.current.send(JSON.stringify({
-          type: "frame_info",
-          frameId,
-          timestamp: performance.now()
-        }));
+    if (sender) {
+      // @ts-ignore
+      if (typeof RTCRtpScriptTransform !== 'undefined') {
+        const worker = new Worker(new URL('./transformWorker.ts', import.meta.url));
+        worker.onmessage = (e) => {
+          if (e.data.type === 'frame') {
+            const offloadTime = performance.now();
+            const rtpTimestamp = e.data.timestamp;
+            const capTime = captureTimeQueueRef.current.shift();
+            if (capTime !== undefined) {
+              telemetryStore.logEvent(rtpTimestamp, "capture", capTime);
+            }
+            telemetryStore.logEvent(rtpTimestamp, "offload", offloadTime);
+          }
+        };
+        // @ts-ignore
+        sender.transform = new RTCRtpScriptTransform(worker, {});
+      } else if ("createEncodedStreams" in sender) {
+        // @ts-ignore
+        const { readable, writable } = sender.createEncodedStreams();
+        readable.pipeThrough(new TransformStream({
+          transform(chunk, controller) {
+            if (chunk instanceof RTCEncodedVideoFrame) {
+              const rtpTimestamp = chunk.timestamp;
+              const capTime = captureTimeQueueRef.current.shift();
+              if (capTime !== undefined) {
+                telemetryStore.logEvent(rtpTimestamp, "capture", capTime);
+              }
+              telemetryStore.logEvent(rtpTimestamp, "offload", performance.now());
+            }
+            controller.enqueue(chunk);
+          }
+        })).pipeTo(writable);
       }
-    },
-    [transportConnectionState],
-  );
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
     outputStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -209,12 +243,13 @@ export function useWebRTCTransport(): WebRTCTransport {
     () => ({
       connect,
       disconnect,
-      sendFrame,
+      setSourceStream,
+      trackCaptureTime,
       onDataReceived,
       connectionState: transportConnectionState,
       transportMethod: transportMethod.current,
     }),
-    [connect, disconnect, sendFrame, onDataReceived, transportConnectionState],
+    [connect, disconnect, setSourceStream, trackCaptureTime, onDataReceived, transportConnectionState],
   );
   return useMemo(
     () => ({
@@ -223,28 +258,4 @@ export function useWebRTCTransport(): WebRTCTransport {
     }),
     [offloadTransport],
   );
-}
-
-/**
- * Pushes the current canvas bitmap into the MediaStream produced by `captureStream`.
- * Required when using manual capture (`captureStream(0)`)
- */
-function requestCanvasCaptureFrame(stream: MediaStream | null) {
-  if (!stream) return;
-  const track = stream.getVideoTracks()[0];
-  if (!track) return;
-  const cap = track as CanvasCaptureMediaStreamTrack;
-  if (typeof cap.requestFrame === "function") {
-    cap.requestFrame();
-  }
-}
-
-/** Helps the encoder treat canvas content as detail-rich (vs motion-only). */
-function applyCanvasVideoTrackHints(track: MediaStreamTrack) {
-  if (track.kind !== "video") return;
-  try {
-    track.contentHint = "detail";
-  } catch {
-    /* ignore */
-  }
 }

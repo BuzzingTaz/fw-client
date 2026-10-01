@@ -24,9 +24,7 @@ export function useLocalFrameProcessor(
       return new Promise((resolve) => {
         if (!workerRef.current) return;
 
-        workerRef.current.postMessage(
-
-        );
+        workerRef.current.postMessage(frame);
 
         workerRef.current.onmessage = (e) => {
           resolve(e.data);

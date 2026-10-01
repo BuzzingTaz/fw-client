@@ -38,10 +38,15 @@ export function useWebSocketTransport(): WebSocketTransport {
     };
   }, []);
 
-  const sendFrame = useCallback((frame: Blob, frameId?: number) => {
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(frame);
-    }
+  const setSourceStream = useCallback((stream: MediaStream) => {
+    // NOTE: WebSocket transport is currently incomplete.
+    // To implement this, we'd likely need to use an ImageCapture or MediaRecorder
+    // on the stream to extract frames and send them via WebSocket.
+    console.warn("setSourceStream not fully implemented for WebSocketTransport");
+  }, []);
+
+  const trackCaptureTime = useCallback((time: number) => {
+    // track capture time
   }, []);
 
   const disconnect = useCallback(() => {
@@ -53,7 +58,8 @@ export function useWebSocketTransport(): WebSocketTransport {
     offloadTransport: {
       connect,
       disconnect,
-      sendFrame,
+      setSourceStream,
+      trackCaptureTime,
       onDataReceived,
       connectionState: transportConnectionState,
       transportMethod: transportMethod.current,
